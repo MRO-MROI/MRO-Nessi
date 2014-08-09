@@ -50,7 +50,6 @@ def main():
 
     batches.append(
         ('Setting up Aptitude...', [
-            'add-apt-repository ppa:olebole/astro-precise',
             'apt-get update',
             'apt-get autoremove',
             'apt-get autoclean',
@@ -80,6 +79,7 @@ def main():
             'apt-get install python-serial',
             'apt-get install python-usb',
             'pip install -U pyusb',
+            'pip install -U pywcs',
             'apt-get install python-pyds9',
         ]))
     batches.append(
@@ -127,8 +127,8 @@ def main():
 #numbers. If this device is replaced, find which device
 #it is, find the serial number, and replace.
 
-ATTRS{serial}=="83840902", SYMLINK+="ttyREI12", MODE="0666"
-ATTRS{serial}=="83841481", SYMLINK+="ttyREI34", MODE="0666"
+ATTRS{serial}=="83840902", SYMLINK+="ttyREI34", MODE="0666"
+ATTRS{serial}=="83841481", SYMLINK+="ttyAGR", MODE="0666"
 '''
     f = open('/etc/udev/rules.d/90-thorlabs.rules', 'w')
     f.write(thorlabs)
@@ -162,37 +162,52 @@ KERNEL=="fliusb*", MODE="666", GROUP="plugdev"
 
     taskBatch('Reloading rules...', ['udevadm control --reload-rules'])
 
+    print colors['OK'] + 'Installing kernel headers...'
+    uname = check_output(['uname', '-r']).strip()
+    taskBatch('Installing kernel headers...', [
+            'apt-get install linux-headers-%s' % uname
+        ])
+    print colors['OK'] + 'Installing PyGuide...'
+    taskBatch('Fetching and installing PyGuide...', [
+            'rm -rf /tmp/PyGuide-build',
+            'mkdir /tmp/PyGuide-build',
+            'cd /tmp/PyGuide-build',
+            'wget http://www.astro.washington.edu/users/rowen/PyGuide/files/PyGuide_2.2.1.zip -O PyGuide.zip',
+            'unzip PyGuide.zip',
+            'cd PyGuide_2.2.1',
+            'python setup.py build',
+            'python setup.py install'
+            ])
     print colors['OK'] + 'Setting up pyfli...'
     taskBatch('Downloading/Building fliusb-1.3...', [
-            'cd ~/Downloads',
-            'git clone https://github.com/charris/pyfli.git',
-            'cd ~/Downloads/pyfli/fliusb-1.3',
+            'rm -rf /tmp/pyfli-build',
+            'git clone https://github.com/charris/pyfli.git /tmp/pyfli-build',
+            'cd /tmp/pyfli-build/fliusb-1.3',
             'make clean',
             'make'
             ])
     print colors['OK'] + 'Installing fliusb...'
-    uname = check_output(['uname', '-r']).strip()
     taskBatch('Copying files/depmod...', [
-            'mkdir /lib/modules/%s/misc' % uname,
+            'mkdir -p /lib/modules/%s/misc' % uname,
             'cp fliusb.ko /lib/modules/%s/misc/' % uname,
             'depmod'
             ])
     taskBatch('Building/Installing pyfli...', [
-            'cd ~/Downloads/pyfli',
+            'cd /tmp/pyfli-build',
             'python setup.py build',
             'python setup.py install'
             ])
     
     print colors['OK'] + 'Installing NESSI...'
-
+    user_home = check_output(['printenv', 'HOME']).strip()
     taskBatch('Downloading current software...', [
-            'cd ~/Documents',
+            'mkdir -p %s/NESSI' % user_home,
+            'cd %s/NESSI' % user_home,
             'wget https://bitbucket.org/lschmidt/nessi/get/master.tar.gz',
             'tar -xvf master.tar.gz',
             ])
 
     print colors['OK'] + 'Moving NESSI...'
-
     try:
         check_output('mv lschmidt* nessi', shell=True)
         user = check_output('who').split()[0]
